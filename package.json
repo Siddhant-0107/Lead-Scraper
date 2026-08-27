@@ -1,17 +1,39 @@
 {
-  "name": "manta-lead-automation",
-  "version": "1.0.0",
-  "main": "index.js",
+  "name": "leadflow",
+  "version": "2.0.0",
+  "description": "Asynchronous business lead collection platform",
+  "type": "module",
+  "main": "src/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "worker": "node src/jobs/worker.js",
+    "scrape": "node index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "build": "node --check src/server.js && node --check src/jobs/worker.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
+    "bullmq": "^5.61.2",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.4",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
     "googleapis": "^171.4.0",
-    "puppeteer": "^24.37.2"
+    "helmet": "^8.1.0",
+    "ioredis": "^5.7.0",
+    "mongoose": "^8.18.0",
+    "pino": "^9.9.4",
+    "pino-http": "^10.5.0",
+    "puppeteer": "^24.37.2",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "eslint": "^9.34.0",
+    "vitest": "^3.2.4"
   }
 }

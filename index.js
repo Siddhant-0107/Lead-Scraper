@@ -1,19 +1,6 @@
-import "dotenv/config";
-import { scrapeGoogleMaps } from "./scrape.js";
-import { appendToSheet } from "./sheets.js";
-
-const business = process.argv[2] || "barber";
-const location = process.argv[3] || "kuwait";
-
-(async () => {
-  console.log(`Scraping Google Maps: ${business} in ${location}`);
-
-  const leads = await scrapeGoogleMaps(business, location);
-
-  console.log(`Found ${leads.length} leads`);
-
-  // ✅ PASS OBJECTS DIRECTLY
-  await appendToSheet(leads);
-
-  console.log("Leads pushed to Google Sheets ✅");
-})();
+import { connectDatabase, closeDatabase } from "./src/db.js";
+import { Job } from "./src/jobs/job.model.js";
+import { enqueueJob, closeQueue } from "./src/jobs/queue.js";
+const [business = "barber", location = "Delhi", rawMaxResults = "50"] = process.argv.slice(2);
+await connectDatabase();
+try { const job = await Job.create({ business, location, maxResults: Math.min(Math.max(Number(rawMaxResults) || 50, 1), 200) }); await enqueueJob(job); console.log(`Queued job ${job.id}. Start a worker with: npm run worker`); } finally { await Promise.allSettled([closeDatabase(), closeQueue()]); }

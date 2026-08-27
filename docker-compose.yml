@@ -1,0 +1,19 @@
+services:
+  api:
+    build: .
+    command: npm start
+    env_file: .env
+    ports: ["3000:3000"]
+    depends_on: [mongo, redis]
+  worker:
+    build: .
+    command: npm run worker
+    env_file: .env
+    depends_on: [mongo, redis]
+  mongo:
+    image: mongo:7
+    volumes: [mongo-data:/data/db]
+  redis:
+    image: redis:7-alpine
+volumes:
+  mongo-data:

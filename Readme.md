@@ -1,175 +1,99 @@
-# 📍 Google Maps Lead Scraper
+# LeadFlow — Asynchronous Business Lead Collection Platform
 
-A **human-safe, production-ready Google Maps lead generation tool** built with **Node.js + Puppeteer**, designed to extract high-quality business leads and store them directly in **Google Sheets**.
+LeadFlow is a modular backend for collecting public business-listing data. It demonstrates why slow, failure-prone browser automation belongs behind a REST API and durable queue—not inside an HTTP request.
 
-> Built for real-world usage  
-> ✅ No headless abuse  
-> ✅ No WhatsApp auto-spam  
-> ✅ No account bans  
-> ✅ Clean, deduplicated leads  
+## Architecture
 
----
+```mermaid
+flowchart LR
+  Client --> API[Express API]
+  API --> DB[(MongoDB)]
+  API --> Queue[BullMQ / Redis]
+  Queue --> Worker[Bounded Workers]
+  Worker --> Scraper[Puppeteer]
+  Scraper --> Normalize[Normalize + Dedupe]
+  Normalize --> DB
+  DB --> Sheets[Optional Google Sheets]
+```
 
-## ✨ Features
+## Engineering value
 
-- 🔍 Scrapes business leads from **Google Maps**
-- 🏢 Extracts:
-  - Business Name
-  - Phone Number
-  - WhatsApp (auto-detected / fallback)
-  - Address
-  - Website
-- 📊 Automatically appends data to **Google Sheets**
-- 🧹 Deduplicates leads by phone number
-- 🧠 Human-in-the-loop design (ban-safe)
-- ⚙️ CLI-based usage (business + location)
-- 🪟 Fully Windows-compatible
+- API requests validate input, persist a `queued` job, and immediately return `202`.
+- A BullMQ worker handles `queued → running → completed/failed/cancelled`, with durable progress, result counts, timestamps, and error message.
+- `MAX_CONCURRENT_JOBS` defaults to 2 because each scrape owns Chromium. Browser closure is guaranteed with `finally`.
+- Centralized selector candidates, navigation timeouts, isolated listing failures, and configurable exponential-backoff retries improve resilience without attempting CAPTCHA bypasses or stealth evasion.
+- Text, phone, and URLs are normalized. WhatsApp remains null unless a real WhatsApp link is found.
+- Deterministic dedupe uses normalized phone → Maps URL → website → name + address. MongoDB unique indexes backstop process-memory checks.
+- Helmet, CORS allow-list, payload limits, rate limiting, Zod input validation, and redacted structured Pino logs are included.
 
----
+## Data flow and database design
 
-## 🧰 Tech Stack
+`POST /api/jobs` → validate → persist Job → enqueue Redis message → worker scrapes → normalize → persist non-duplicates → optional Sheets append. A Job stores query, requested result count, lifecycle status, progress, lead/duplicate counts, timestamps, queue ID, and safe failure message. A Lead stores name, raw and normalized phone, optional verified WhatsApp URL, address, website, Maps URL, rating/reviews, category, source, and timestamps. Sparse unique indexes cover phone, website, Maps URL, and name/address.
 
-- **Node.js**
-- **Puppeteer**
-- **Google Sheets API**
-- **Google Maps Web**
+## Job processing, retries, and concurrency
 
----
+BullMQ owns job-level retries using `JOB_ATTEMPTS` and `BACKOFF_DELAY_MS`; this avoids multiplying retries in both scraper and queue layers. Queue history is retained for one day (completed) or seven days (failed), bounded to 1,000 records each. Cancellation uses conditional database updates, so it cannot overwrite a terminal state or lose a race to completion. The worker concurrency limit is deliberately low and configurable: more parallel Chromium instances increases RAM/CPU pressure and increases the chance of unstable automation.
 
-## 🚀 How It Works
+## Tech stack
 
-1. Opens Google Maps in a real browser
-2. Searches for a business + location
-3. Zooms out to expand search radius
-4. Aggressively scrolls to load all listings
-5. Clicks each listing and extracts details
-6. Deduplicates leads by phone number
-7. Appends only **new leads** to Google Sheets
+Node.js, Express, MongoDB/Mongoose, Redis/BullMQ, Puppeteer, Google Sheets API, Pino, Zod, Vitest, Docker, and GitHub Actions.
 
----
+## API
 
-## 📂 Project Structure
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/jobs` | Queue `{ business, location, maxResults }` |
+| `GET /api/jobs`, `GET /api/jobs/:id` | List or inspect jobs |
+| `POST /api/jobs/:id/cancel` | Cancel an eligible job |
+| `GET /api/leads`, `GET /api/leads/:id`, `DELETE /api/leads/:id` | Manage leads |
+| `GET /api/stats` | Lead and job metrics |
+| `GET /api/health` | Database-aware health response |
 
-.
-├── index.js # CLI entry point
-├── scrape.js # Google Maps scraping logic
-├── sheets.js # Google Sheets integration + deduplication
-├── package.json
-├── .gitignore
-├── README.md
-├── credentials.json # ❌ DO NOT COMMIT
-└── .env # ❌ DO NOT COMMIT
-
-
----
-
-## ⚙️ Setup Instructions
-
-### 1️⃣ Clone the Repository
 ```bash
-git clone https://github.com/yourusername/google-maps-lead-scraper.git
-cd google-maps-lead-scraper
-2️⃣ Install Dependencies
+curl -X POST http://localhost:3000/api/jobs -H 'content-type: application/json' -d '{"business":"dentist","location":"Delhi","maxResults":50}'
+```
+
+## Setup
+
+```bash
+cp .env.example .env
 npm install
-3️⃣ Google Sheets Setup
-Create a Google Cloud Project
+npm start       # API
+npm run worker  # another terminal
+npm run scrape -- dentist Delhi 50
+```
 
-Enable Google Sheets API
+Configure `MONGODB_URI` and `REDIS_URL`; set `GOOGLE_SHEET_ID` and `GOOGLE_APPLICATION_CREDENTIALS` only for Sheets export. Never commit credential JSON or `.env`. Docker starts API, worker, MongoDB, and Redis with `docker compose up --build`.
 
-Create a Service Account
+### Environment variables
 
-Download credentials.json
+`PORT`, `MONGODB_URI`, `REDIS_URL`, `MAX_CONCURRENT_JOBS`, `SCRAPE_TIMEOUT_MS`, `JOB_ATTEMPTS`, and `BACKOFF_DELAY_MS` configure core behavior. `GOOGLE_SHEET_ID` and `GOOGLE_APPLICATION_CREDENTIALS` enable optional export. See `.env.example` for defaults.
 
-Place it in the project root
-⚠️ Never commit this file
+## Testing and CI/CD
 
-4️⃣ Environment Variables
-Create a .env file:
+Run `npm test`, `npm run lint`, and `npm run build`. The GitHub Actions workflow runs the same install/lint/test/build pipeline for pushes and pull requests. Integration tests should use disposable MongoDB/Redis containers in CI rather than live services; browser calls should always stay mocked.
 
-SHEET_ID=your_google_sheet_id_here
-▶️ Usage
-Run from the command line:
+## Reliability and limitations
 
-node index.js jewellers noida
-More examples:
+Retries are limited to transient navigation/browser failures, using 1s, 2s, then 4s delays. Google Maps markup changes require selector maintenance. Sheets export is best-effort and cannot fail a completed scrape. Tests mock external behavior by testing pure normalization, dedupe, and retry utilities; they never scrape Maps.
 
-node index.js dentist delhi
-node index.js gym "greater noida"
-node index.js salon dubai
-📊 Google Sheet Output
-Business Name	Phone	WhatsApp	Address	Website
-Leads are appended, not overwritten
+This project does not bypass CAPTCHAs, evade anti-bot systems, verify WhatsApp accounts, or automate outreach. Users must comply with applicable terms, privacy laws, and consent requirements.
 
-Duplicate phone numbers are skipped automatically
+## Current limitations
 
-🟢 WhatsApp Outreach (Safe by Design)
-This tool does NOT auto-send WhatsApp messages.
+- A worker process can still be interrupted by an OS crash; BullMQ will detect stalled queue work, but a production deployment should add alerting and a reconciliation process for stale `running` records.
+- Google Maps DOM and access controls are outside this application's control. The scraper intentionally does not evade them.
+- Sheets export happens after database persistence and is logged as best-effort; it is not yet persisted as a separate export record.
+- Offset pagination is appropriate for the current portfolio scale; cursor pagination is better for very large datasets.
 
-Instead:
+## Design decisions and future improvements
 
-Generates WhatsApp-ready numbers
+This is intentionally a modular monolith: one API and one independently scalable worker process, rather than a microservice fleet. The Sheets integration is isolated and best-effort because storage is the source of truth. Useful next steps are authenticated users, an OpenAPI UI, selector health metrics, a manual review workflow, and test-container integration coverage.
 
-Supports wa.me prefilled links via Google Sheets
+## Interview talking points
 
-Designed for manual confirmation before sending
-
-This prevents WhatsApp number bans.
-
-Example WhatsApp link formula (Google Sheets):
-
-=HYPERLINK(
- "https://wa.me/91"&REGEXREPLACE(B2,"[^0-9]","")&
- "?text="&ENCODEURL("Hi, I found your business on Google Maps."),
- "Open WhatsApp"
-)
-🔒 What This Tool Does NOT Do
-❌ No headless scraping
-
-❌ No CAPTCHA bypass
-
-❌ No WhatsApp auto-sending
-
-❌ No ToS-breaking automation
-
-These limitations are intentional.
-
-⚠️ Disclaimer
-This project is intended for educational and research purposes only.
-Users are responsible for complying with:
-
-Google Maps Terms of Service
-
-WhatsApp usage policies
-
-Local data protection laws
-
-Use responsibly.
-
-💡 Use Cases
-Freelance lead generation
-
-Local business outreach
-
-Market research
-
-Agency prospecting
-
-CRM list building
-
-📈 Future Improvements
-⭐ Ratings & review count
-
-📍 Google Maps profile links
-
-🔁 Multi-city batch scraping
-
-🧾 CSV export
-
-📨 Outreach tracking (sent / replied)
-
-🙌 Author
-Built by Siddhant Dubey
-
-If this project helped you, feel free to ⭐ the repository.
-
-Happy scraping (responsibly) 🚀
+1. Why did we use a job queue instead of holding an HTTP connection open?
+2. How does bounded Puppeteer concurrency protect host resources?
+3. Why do we combine multiple dedupe signals with database constraints?
+4. How do you distinguish retryable from permanent failures?
+5. What would you add next: authentication, selector observability, browser pooling, or a review queue?

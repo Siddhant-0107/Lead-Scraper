@@ -1,0 +1,1 @@
+export default [{ ignores: ["node_modules", "coverage"] }, { languageOptions: { globals: { process: "readonly", console: "readonly", setTimeout: "readonly", URL: "readonly", document: "readonly" } }, rules: { "no-unused-vars": ["error", { argsIgnorePattern: "^_" }], "no-undef": "error" } }];

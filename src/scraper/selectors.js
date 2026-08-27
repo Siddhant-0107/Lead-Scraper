@@ -1,0 +1,2 @@
+export const selectors = { feed: ["div[role='feed']"], listing: ["a[href*='/maps/place/']"], name: ["h1.DUwDvf", "h1.fontHeadlineLarge"], phone: ["button[data-item-id^='phone']"], address: ["button[data-item-id='address']"], website: ["a[data-item-id='authority']"], category: ["button.DkEaL"] };
+export const firstSelector = async (page, candidates, timeout) => { for (const selector of candidates) { try { await page.waitForSelector(selector, { timeout }); return selector; } catch {} } return null; };
