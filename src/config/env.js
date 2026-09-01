@@ -10,6 +10,8 @@ const schema = z.object({
   SCRAPE_TIMEOUT_MS: z.coerce.number().int().min(5000).max(120000).default(30000),
   JOB_ATTEMPTS: z.coerce.number().int().min(1).max(5).default(3),
   BACKOFF_DELAY_MS: z.coerce.number().int().min(100).max(30000).default(1000),
+  MAX_RETRIES: z.coerce.number().int().min(0).max(10).default(3),
+  MAX_SCROLL_ITERATIONS: z.coerce.number().int().min(5).max(50).default(20),
   GOOGLE_SHEET_ID: z.string().optional(),
   GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
   CORS_ORIGIN: z.string().default("http://localhost:3000")
