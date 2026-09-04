@@ -15,10 +15,10 @@ export async function setupTestDatabase() {
 }
 
 export async function cleanupTestDatabase() {
-  // Clean all collections but keep indexes
   const collections = await mongoose.connection.db.listCollections().toArray();
+
   for (const { name } of collections) {
-    await mongoose.connection.db.dropCollection(name);
+    await mongoose.connection.db.collection(name).deleteMany({});
   }
 }
 

@@ -13,6 +13,7 @@ await connectDatabase();
 const worker = new Worker("scrape-jobs", async queueJob => {
   const jobId = queueJob.data.jobId;
   const record = await claimJob(jobId);
+ 
   if (!record) return; // cancelled, terminal, or already claimed by another worker
   const started = Date.now();
   try {
