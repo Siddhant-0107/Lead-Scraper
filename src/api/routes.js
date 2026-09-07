@@ -4,6 +4,8 @@ import { Job } from "../jobs/job.model.js";
 import { cancelJob, requestKeyFor } from "../jobs/job.service.js";
 import { Lead } from "../leads/lead.model.js";
 import { enqueueJob, connection } from "../jobs/queue.js";
+import { exportLeads } from "../sheets/sheetsExporter.js";
+import { env } from "../config/env.js";
 import { createJobSchema, idSchema, paginationSchema } from "./validation.js";
 
 const router = Router();
@@ -24,6 +26,15 @@ router.post("/jobs", async (req, res) => {
 });
 router.get("/jobs", async (req, res) => { const { page, limit } = paginate(req.query); const [data, total] = await Promise.all([Job.find().sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit), Job.countDocuments()]); res.json({ data, page, limit, total }); });
 router.get("/jobs/:id", async (req, res) => { const job = await Job.findById(parseId(req.params.id)); if (!job) throw apiError(404, "JOB_NOT_FOUND", "The requested job does not exist."); res.json(job); });
+router.post("/jobs/:id/export/sheets", async (req, res) => {
+  const job = await Job.findById(parseId(req.params.id));
+  if (!job) throw apiError(404, "JOB_NOT_FOUND", "The requested job does not exist.");
+  if (job.status !== "completed") throw apiError(409, "JOB_NOT_COMPLETE", "Only completed jobs can be exported.");
+  if (!env.GOOGLE_SHEET_ID || !env.GOOGLE_APPLICATION_CREDENTIALS) throw apiError(503, "SHEETS_NOT_CONFIGURED", "Google Sheets export is not configured on the server.");
+  const result = await exportLeads(job.scrapedLeads || []);
+  if (!result.enabled) throw apiError(503, "SHEETS_NOT_CONFIGURED", "Google Sheets export is not configured on the server.");
+  res.json({ exported: result.exported, url: `https://docs.google.com/spreadsheets/d/${env.GOOGLE_SHEET_ID}/edit` });
+});
 router.post("/jobs/:id/cancel", async (req, res) => { const job = await cancelJob(parseId(req.params.id)); if (job) return res.json({ jobId: job.id, status: job.status }); const exists = await Job.exists({ _id: req.params.id }); if (!exists) throw apiError(404, "JOB_NOT_FOUND", "The requested job does not exist."); throw apiError(409, "JOB_NOT_CANCELLABLE", "The job is already in a terminal state."); });
 router.get("/leads", async (req, res) => { const { page, limit } = paginate(req.query); const [data, total] = await Promise.all([Lead.find().sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit), Lead.countDocuments()]); res.json({ data, page, limit, total }); });
 router.get("/leads/:id", async (req, res) => { const lead = await Lead.findById(parseId(req.params.id)); if (!lead) throw apiError(404, "LEAD_NOT_FOUND", "The requested lead does not exist."); res.json(lead); });
