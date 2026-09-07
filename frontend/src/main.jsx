@@ -27,13 +27,12 @@ function App() {
   const completed = job?.status === "completed";
   const terminal = ["completed", "failed", "cancelled"].includes(job?.status);
 
-  async function loadLeads(jobId = null) {
+  async function loadLeads(jobId = job?.jobId) {
+    if (!jobId) return setLeads([]);
     const result = await api("/api/leads?limit=100");
     const data = result.data || [];
-    setLeads(jobId ? data.filter(lead => String(lead.jobId) === String(jobId)) : data);
+    setLeads(data.filter(lead => String(lead.jobId) === String(jobId)));
   }
-
-  useEffect(() => { loadLeads().catch(() => {}); }, []);
 
   useEffect(() => {
     if (!job?.jobId || terminal) return;
@@ -126,7 +125,7 @@ function App() {
         {job?.status === "running" && <div className="progress"><div style={{ width: `${job.progress || 0}%` }} /></div>}
 
         <section className="results-section">
-          <div className="section-heading"><div><p className="eyebrow">RESULTS</p><h2>Lead directory</h2></div><button className="refresh" onClick={() => loadLeads()} disabled={loading} title={loading ? "Results will appear when the job completes" : "Refresh leads"}><RefreshCw size={17} /></button></div>
+          <div className="section-heading"><div><p className="eyebrow">RESULTS</p><h2>Lead directory</h2></div><button className="refresh" onClick={() => loadLeads()} disabled={!completed} title={completed ? "Refresh current job results" : "Results are available after the current job completes"}><RefreshCw size={17} /></button></div>
           {leads.length === 0 ? <div className="empty"><Search size={30} /><h3>{loading ? "Waiting for results" : "No leads to display"}</h3><p>{loading ? "Leads from this job will appear after scraping completes." : "Run a search to populate your lead directory."}</p></div> : <div className="table-wrap"><table><thead><tr><th>Business</th><th>Phone</th><th>Website</th><th>Address</th><th>Maps</th></tr></thead><tbody>{leads.map(lead => <tr key={lead._id}><td><strong>{lead.name || "—"}</strong>{lead.category && <small>{lead.category}</small>}</td><td>{lead.phone ? <a href={`tel:${lead.phone}`}><Phone size={14} />{lead.phone}</a> : "—"}</td><td>{lead.website ? <a href={lead.website} target="_blank" rel="noreferrer"><Globe size={14} />Visit</a> : "—"}</td><td className="address">{lead.address || "—"}</td><td>{lead.googleMapsUrl ? <a href={lead.googleMapsUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />Open</a> : "—"}</td></tr>)}</tbody></table></div>}
         </section>
       </main>
