@@ -11,7 +11,12 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) }
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body?.error?.message || "Request failed");
+  if (!response.ok) {
+    const error = new Error(body?.error?.message || "Request failed");
+    error.status = response.status;
+    error.retryAfter = response.headers.get("retry-after");
+    throw error;
+  }
   return body;
 }
 
@@ -34,17 +39,22 @@ function App() {
         const latest = await api(`/api/jobs/${job.jobId}`);
         const latestJob = { ...latest, jobId: latest.jobId || job.jobId };
         setJob(latestJob);
+        setError("");
         if (["completed", "failed", "cancelled"].includes(latestJob.status)) {
           clearInterval(timer);
           if (latestJob.status === "completed") setLeads(latestJob.scrapedLeads || []);
           setLoading(false);
         }
       } catch (err) {
+        if (err.status === 429) {
+          setError("API rate limit reached. Retrying automatically…");
+          return;
+        }
         setError(err.message);
         clearInterval(timer);
         setLoading(false);
       }
-    }, 1200);
+    }, 5000);
     return () => clearInterval(timer);
   }, [job?.jobId, terminal]);
 
@@ -54,8 +64,9 @@ function App() {
       const latest = await api(`/api/jobs/${job.jobId}`);
       setJob({ ...latest, jobId: job.jobId });
       setLeads(latest.scrapedLeads || []);
+      setError("");
     } catch (err) {
-      setError(err.message);
+      setError(err.status === 429 ? "API rate limit reached. Please try again shortly." : err.message);
     }
   }
 
