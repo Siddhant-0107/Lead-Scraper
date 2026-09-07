@@ -28,9 +28,9 @@ export async function scrapeGoogleMaps({ business, location, maxResults, onProgr
 
       await page.evaluate(selector => {
         const el = document.querySelector(selector);
-        if (el) el.scrollTo(0, el.scrollHeight);
+        if (el) el.scrollBy(0, 800);
       }, feed);
-      await new Promise(resolve => setTimeout(resolve, 1200));
+      await new Promise(resolve => setTimeout(resolve, 1500));
     }
 
     const urls = [...links].slice(0, target);
