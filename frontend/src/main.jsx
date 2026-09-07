@@ -27,9 +27,10 @@ function App() {
   const completed = job?.status === "completed";
   const terminal = ["completed", "failed", "cancelled"].includes(job?.status);
 
-  async function loadLeads() {
+  async function loadLeads(jobId = null) {
     const result = await api("/api/leads?limit=100");
-    setLeads(result.data || []);
+    const data = result.data || [];
+    setLeads(jobId ? data.filter(lead => String(lead.jobId) === String(jobId)) : data);
   }
 
   useEffect(() => { loadLeads().catch(() => {}); }, []);
@@ -39,10 +40,11 @@ function App() {
     const timer = setInterval(async () => {
       try {
         const latest = await api(`/api/jobs/${job.jobId}`);
-        setJob(latest);
-        if (["completed", "failed", "cancelled"].includes(latest.status)) {
+        const latestJob = { ...latest, jobId: latest.jobId || job.jobId };
+        setJob(latestJob);
+        if (["completed", "failed", "cancelled"].includes(latestJob.status)) {
           clearInterval(timer);
-          if (latest.status === "completed") await loadLeads();
+          if (latestJob.status === "completed") await loadLeads(latestJob.jobId);
           setLoading(false);
         }
       } catch (err) {
@@ -68,7 +70,7 @@ function App() {
       setJob(result);
       if (result.duplicate) {
         const latest = await api(`/api/jobs/${result.jobId}`);
-        setJob(latest);
+        setJob({ ...latest, jobId: result.jobId });
       }
     } catch (err) {
       setError(err.message);
