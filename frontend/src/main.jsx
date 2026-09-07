@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Search, MapPin, Building2, RefreshCw, ExternalLink, Phone, Globe, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Search, MapPin, Building2, RefreshCw, ExternalLink, Phone, Globe, Loader2, CheckCircle2, XCircle, FileSpreadsheet, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import "./styles.css";
 
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -20,6 +21,28 @@ async function api(path, options = {}) {
   return body;
 }
 
+function exportExcel(leads, job) {
+  const rows = leads.map(lead => ({
+    Business: lead.name || "",
+    Category: lead.category || "",
+    Phone: lead.phone || "",
+    WhatsApp: lead.whatsapp || "",
+    Address: lead.address || "",
+    Website: lead.website || "",
+    "Google Maps": lead.googleMapsUrl || "",
+    Rating: lead.rating ?? "",
+    "Review Count": lead.reviewCount ?? "",
+    Location: lead.location || "",
+    Source: lead.source || "Google Maps"
+  }));
+  const sheet = XLSX.utils.json_to_sheet(rows);
+  sheet["!cols"] = [16, 20, 18, 18, 42, 32, 55, 10, 14, 24, 18].map(wch => ({ wch }));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Leads");
+  const filename = `leadflow-${job?.business || "leads"}-${job?.location || "export"}`.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+  XLSX.writeFile(workbook, `${filename || "leadflow-leads"}.xlsx`);
+}
+
 function App() {
   const [business, setBusiness] = useState("dentist");
   const [location, setLocation] = useState("Dhanbad, Jharkhand");
@@ -27,6 +50,7 @@ function App() {
   const [job, setJob] = useState(null);
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [exportingSheets, setExportingSheets] = useState(false);
   const [error, setError] = useState("");
 
   const completed = job?.status === "completed";
@@ -67,6 +91,20 @@ function App() {
       setError("");
     } catch (err) {
       setError(err.status === 429 ? "API rate limit reached. Please try again shortly." : err.message);
+    }
+  }
+
+  async function exportGoogleSheets() {
+    if (!completed || exportingSheets) return;
+    setExportingSheets(true);
+    setError("");
+    try {
+      const result = await api(`/api/jobs/${job.jobId}/export/sheets`, { method: "POST" });
+      window.open(result.url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setError(err.status === 503 ? "Google Sheets is not configured. Add GOOGLE_SHEET_ID and GOOGLE_APPLICATION_CREDENTIALS to the API environment." : err.message);
+    } finally {
+      setExportingSheets(false);
     }
   }
 
@@ -140,7 +178,14 @@ function App() {
         {job?.status === "running" && <div className="progress"><div style={{ width: `${job.progress || 0}%` }} /></div>}
 
         <section className="results-section">
-          <div className="section-heading"><div><p className="eyebrow">RESULTS</p><h2>Lead directory</h2></div><button className="refresh" onClick={refreshResults} disabled={!completed} title={completed ? "Refresh current job results" : "Results are available after the current job completes"}><RefreshCw size={17} /></button></div>
+          <div className="section-heading">
+            <div><p className="eyebrow">RESULTS</p><h2>Lead directory</h2></div>
+            <div className="export-actions">
+              <button className="export-btn" onClick={() => exportExcel(leads, job)} disabled={!completed || !leads.length} title="Download current results as Excel"><Download size={16} /> Excel</button>
+              <button className="export-btn" onClick={exportGoogleSheets} disabled={!completed || !leads.length || exportingSheets} title="Export current results to Google Sheets"><FileSpreadsheet size={16} /> {exportingSheets ? "Exporting…" : "Google Sheets"}</button>
+              <button className="refresh" onClick={refreshResults} disabled={!completed} title={completed ? "Refresh current job results" : "Results are available after the current job completes"}><RefreshCw size={17} /></button>
+            </div>
+          </div>
           {leads.length === 0 ? <div className="empty"><Search size={30} /><h3>{loading ? "Waiting for results" : "No leads to display"}</h3><p>{loading ? "Leads from this job will appear after scraping completes." : "Run a search to populate your lead directory."}</p></div> : <div className="table-wrap"><table><thead><tr><th>Business</th><th>Phone</th><th>Website</th><th>Address</th><th>Maps</th></tr></thead><tbody>{leads.map((lead, index) => <tr key={`${lead.googleMapsUrl || lead.name}-${index}`}><td><strong>{lead.name || "—"}</strong>{lead.category && <small>{lead.category}</small>}</td><td>{lead.phone ? <a href={`tel:${lead.phone}`}><Phone size={14} />{lead.phone}</a> : "—"}</td><td>{lead.website ? <a href={lead.website} target="_blank" rel="noreferrer"><Globe size={14} />Visit</a> : "—"}</td><td className="address">{lead.address || "—"}</td><td>{lead.googleMapsUrl ? <a href={lead.googleMapsUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />Open</a> : "—"}</td></tr>)}</tbody></table></div>}
         </section>
       </main>
