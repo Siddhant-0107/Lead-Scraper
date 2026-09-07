@@ -10,12 +10,15 @@ export async function scrapeGoogleMaps({ business, location, maxResults, onProgr
     const feed = await firstSelector(page, selectors.feed, env.SCRAPE_TIMEOUT_MS);
     if (!feed) throw new Error("Google Maps results feed was not found; selectors may need an update.");
     let previousListingCount = 0;
+    let stagnantIterations = 0;
     for (let i = 0; i < env.MAX_SCROLL_ITERATIONS; i += 1) {
       await page.evaluate(selector => { const el = document.querySelector(selector); if (el) el.scrollBy(0, el.scrollHeight); }, feed);
       await new Promise(resolve => setTimeout(resolve, 800));
       const currentLinks = await page.$$eval(selectors.listing[0], elements => [...new Set(elements.map(el => el.href))]);
       const currentListingCount = currentLinks.length;
-      if (!shouldContinueScrolling(i, currentListingCount, previousListingCount, maxResults, env.MAX_SCROLL_ITERATIONS)) break;
+      if (currentListingCount === previousListingCount) stagnantIterations += 1;
+      else stagnantIterations = 0;
+      if (!shouldContinueScrolling(i, currentListingCount, previousListingCount, maxResults, env.MAX_SCROLL_ITERATIONS, stagnantIterations)) break;
       previousListingCount = currentListingCount;
     }
     const links = await page.$$eval(selectors.listing[0], elements => [...new Set(elements.map(el => el.href))]);
