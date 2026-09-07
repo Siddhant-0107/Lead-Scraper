@@ -40,5 +40,21 @@ router.get("/leads", async (req, res) => { const { page, limit } = paginate(req.
 router.get("/leads/:id", async (req, res) => { const lead = await Lead.findById(parseId(req.params.id)); if (!lead) throw apiError(404, "LEAD_NOT_FOUND", "The requested lead does not exist."); res.json(lead); });
 router.delete("/leads/:id", async (req, res) => { const lead = await Lead.findByIdAndDelete(parseId(req.params.id)); if (!lead) throw apiError(404, "LEAD_NOT_FOUND", "The requested lead does not exist."); res.status(204).end(); });
 router.get("/stats", async (_req, res) => { const today = new Date(); today.setHours(0, 0, 0, 0); const [totalLeads, totalJobs, completedJobs, failedJobs, leadsToday, durations, leadCounts] = await Promise.all([Lead.countDocuments(), Job.countDocuments(), Job.countDocuments({ status: "completed" }), Job.countDocuments({ status: "failed" }), Lead.countDocuments({ createdAt: { $gte: today } }), Job.aggregate([{ $match: { status: "completed", startedAt: { $ne: null } } }, { $project: { ms: { $subtract: ["$completedAt", "$startedAt"] } } }, { $group: { _id: null, value: { $avg: "$ms" } } }]), Job.aggregate([{ $match: { status: "completed" } }, { $group: { _id: null, value: { $avg: "$leadsFound" } } }])]); res.json({ totalLeads, totalJobs, completedJobs, failedJobs, leadsToday, averageJobDurationMs: Math.round(durations[0]?.value || 0), averageLeadsPerJob: Math.round(leadCounts[0]?.value || 0), successRate: totalJobs ? completedJobs / totalJobs : 0 }); });
-router.get("/health", async (_req, res) => { const database = mongoose.connection.readyState === 1 ? "connected" : "disconnected"; const redis = connection.status === "ready" ? "connected" : "disconnected"; const healthy = database === "connected" && redis === "connected"; res.status(healthy ? 200 : 503).json({ status: healthy ? "healthy" : "degraded", database, redis }); });
+router.get("/health", async (_req, res) => {
+  const database = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
+
+  let redis = "disconnected";
+  try {
+    await connection.ping();
+    redis = "connected";
+  } catch {}
+
+  const healthy = database === "connected" && redis === "connected";
+
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? "healthy" : "degraded",
+    database,
+    redis
+  });
+});
 export default router;

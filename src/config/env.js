@@ -1,6 +1,10 @@
 import "dotenv/config";
 import { z } from "zod";
 
+if (process.env.NODE_ENV === "test") {
+  process.env.REDIS_URL = "redis://localhost:6379";
+}
+
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(3000),
