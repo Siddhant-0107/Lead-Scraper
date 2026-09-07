@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Search, MapPin, Building2, RefreshCw, ExternalLink, Phone, Globe, Loader2, CheckCircle2, XCircle, FileSpreadsheet, Download } from "lucide-react";
+import { Search, MapPin, Building2, RefreshCw, ExternalLink, Phone, Globe, Loader2, CheckCircle2, XCircle, Download } from "lucide-react";
 import * as XLSX from "xlsx";
 import "./styles.css";
 
@@ -32,14 +32,20 @@ function exportExcel(leads, job) {
     "Google Maps": lead.googleMapsUrl || "",
     Rating: lead.rating ?? "",
     "Review Count": lead.reviewCount ?? "",
-    Location: lead.location || "",
+    Location: lead.location || job?.location || "",
     Source: lead.source || "Google Maps"
   }));
+
   const sheet = XLSX.utils.json_to_sheet(rows);
   sheet["!cols"] = [16, 20, 18, 18, 42, 32, 55, 10, 14, 24, 18].map(wch => ({ wch }));
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Leads");
-  const filename = `leadflow-${job?.business || "leads"}-${job?.location || "export"}`.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+
+  const filename = `leadflow-${job?.business || "leads"}-${job?.location || "export"}`
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+
   XLSX.writeFile(workbook, `${filename || "leadflow-leads"}.xlsx`);
 }
 
@@ -50,7 +56,6 @@ function App() {
   const [job, setJob] = useState(null);
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [exportingSheets, setExportingSheets] = useState(false);
   const [error, setError] = useState("");
 
   const completed = job?.status === "completed";
@@ -91,20 +96,6 @@ function App() {
       setError("");
     } catch (err) {
       setError(err.status === 429 ? "API rate limit reached. Please try again shortly." : err.message);
-    }
-  }
-
-  async function exportGoogleSheets() {
-    if (!completed || exportingSheets) return;
-    setExportingSheets(true);
-    setError("");
-    try {
-      const result = await api(`/api/jobs/${job.jobId}/export/sheets`, { method: "POST" });
-      window.open(result.url, "_blank", "noopener,noreferrer");
-    } catch (err) {
-      setError(err.status === 503 ? "Google Sheets is not configured. Add GOOGLE_SHEET_ID and GOOGLE_APPLICATION_CREDENTIALS to the API environment." : err.message);
-    } finally {
-      setExportingSheets(false);
     }
   }
 
@@ -181,8 +172,7 @@ function App() {
           <div className="section-heading">
             <div><p className="eyebrow">RESULTS</p><h2>Lead directory</h2></div>
             <div className="export-actions">
-              <button className="export-btn" onClick={() => exportExcel(leads, job)} disabled={!completed || !leads.length} title="Download current results as Excel"><Download size={16} /> Excel</button>
-              <button className="export-btn" onClick={exportGoogleSheets} disabled={!completed || !leads.length || exportingSheets} title="Export current results to Google Sheets"><FileSpreadsheet size={16} /> {exportingSheets ? "Exporting…" : "Google Sheets"}</button>
+              <button className="export-btn" onClick={() => exportExcel(leads, job)} disabled={!completed || !leads.length} title="Download current results as an Excel file"><Download size={16} /> Download Excel</button>
               <button className="refresh" onClick={refreshResults} disabled={!completed} title={completed ? "Refresh current job results" : "Results are available after the current job completes"}><RefreshCw size={17} /></button>
             </div>
           </div>
